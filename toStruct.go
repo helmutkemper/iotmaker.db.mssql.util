@@ -10,19 +10,27 @@ import (
 type ToMakeStruct map[string][]ToMakeStructKey
 
 type ToMakeStructKey struct {
-	Name        string
-	TypeString  string
-	TypeReflect reflect.Type
-	SqlTag      string
+	Name         string
+	TypeString   string
+	TypeReflect  reflect.Type
+	SqlTag       string
+	IsPrimaryKey bool
+	IsForeignKey bool
 }
 
 func (el ToMakeStruct) MakeStructText(tagSql string) string {
 	var ret string
-	for structName, structData := range el {
-		ret = fmt.Sprintf("type %v struct {\n", structName)
 
+	for structName, structData := range el {
+		ret = fmt.Sprintf("type Table%v struct {\n", structName)
 		for _, lineData := range structData {
-			ret += fmt.Sprintf("  %v  %v `%v:\"%v\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag)
+			if lineData.IsPrimaryKey == true {
+				ret += fmt.Sprintf("  %v  %v `%v:\"%v\" primaryKey:\"true\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag)
+			} else if lineData.IsForeignKey == true {
+				ret += fmt.Sprintf("  %v  []Table%v `%v:\"%v\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag)
+			} else {
+				ret += fmt.Sprintf("  %v  %v `%v:\"%v\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag)
+			}
 		}
 
 		ret += fmt.Sprintf("}\n")
@@ -35,6 +43,7 @@ func ToStruct(db *sql.DB, ctx context.Context, tableName string, data map[string
 	var err error
 	var tableNameWithRule string
 	var tableNameList []string
+	var primaryTableList = make(map[string]map[string]PrimaryKeyRelation)
 	var foreignTableList = make(map[string]map[string]ForeignKeyRelation)
 	var ret = make(ToMakeStruct)
 	var lineToRet = make([]ToMakeStructKey, 0)
@@ -50,31 +59,51 @@ func ToStruct(db *sql.DB, ctx context.Context, tableName string, data map[string
 	}
 
 	for _, name := range tableNameList {
-		var list map[string]ForeignKeyRelation
-		err, list = ListForeignKeyColumns(db, ctx, name)
+		var listForeignKey map[string]ForeignKeyRelation
+		var listPrimaryKey map[string]PrimaryKeyRelation
+
+		err, listPrimaryKey = ListPrimaryKeyColumns(db, ctx, name)
 		if err != nil {
 			return err, nil
 		}
 
-		if len(list) == 0 {
-			continue
+		if len(listPrimaryKey) != 0 {
+			primaryTableList[name] = listPrimaryKey
 		}
 
-		foreignTableList[name] = list
+		err, listForeignKey = ListForeignKeyColumns(db, ctx, name)
+		if err != nil {
+			return err, nil
+		}
+
+		if len(listForeignKey) != 0 {
+			foreignTableList[name] = listForeignKey
+		}
 	}
 
 	for _, dataCol := range data {
-		key, ok := foreignTableList[tableName][dataCol.Name]
-		if ok != true {
-			structKey, structType, structRealType := notForeignKeyColumn(dataCol)
+		_, isPrimaryKey := primaryTableList[tableName][dataCol.Name]
+		foreignKeyData, isForeignKey := foreignTableList[tableName][dataCol.Name]
+		if isPrimaryKey == true {
+			structKey, structType, structRealType := isPrimaryKeyColumn(dataCol)
 			lineToRet = append(lineToRet, ToMakeStructKey{
-				Name:        structKey,
-				TypeString:  structType,
-				TypeReflect: structRealType,
-				SqlTag:      dataCol.Name,
+				Name:         structKey,
+				TypeString:   structType,
+				TypeReflect:  structRealType,
+				SqlTag:       dataCol.Name,
+				IsPrimaryKey: true,
+			})
+		} else if isForeignKey == true {
+			structKey, structType, structRealType := isForeignKeyColumn(dataCol, foreignKeyData.ReferencedObject)
+			lineToRet = append(lineToRet, ToMakeStructKey{
+				Name:         structKey,
+				TypeString:   structType,
+				TypeReflect:  structRealType,
+				SqlTag:       dataCol.Name,
+				IsForeignKey: true,
 			})
 		} else {
-			structKey, structType, structRealType := isForeignKeyColumn(dataCol, key.ReferencedObject)
+			structKey, structType, structRealType := normalKeyColumn(dataCol)
 			lineToRet = append(lineToRet, ToMakeStructKey{
 				Name:        structKey,
 				TypeString:  structType,
@@ -89,11 +118,15 @@ func ToStruct(db *sql.DB, ctx context.Context, tableName string, data map[string
 	return nil, ret
 }
 
-func notForeignKeyColumn(dataColumn ColumnType) (string, string, reflect.Type) {
+func isPrimaryKeyColumn(dataColumn ColumnType) (string, string, reflect.Type) {
 	return dataColumn.NameWithRule, dataColumn.ScanType.String(), dataColumn.ScanType
 }
 
 func isForeignKeyColumn(dataColumn ColumnType, tableName string) (string, string, reflect.Type) {
 	_, tableName = NameRules(tableName)
-	return tableName, "[]" + tableName, dataColumn.ScanType
+	return tableName, tableName, dataColumn.ScanType
+}
+
+func normalKeyColumn(dataColumn ColumnType) (string, string, reflect.Type) {
+	return dataColumn.NameWithRule, dataColumn.ScanType.String(), dataColumn.ScanType
 }
