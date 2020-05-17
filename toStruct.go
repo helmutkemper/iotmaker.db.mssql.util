@@ -43,8 +43,10 @@ func ToStruct(db *sql.DB, ctx context.Context, tableName string, data map[string
 	var err error
 	var tableNameWithRule string
 	var tableNameList []string
+	var tableDescrptionList = make(map[string]map[string]ColumnType)
 	var primaryTableList = make(map[string]map[string]PrimaryKeyRelation)
 	var foreignTableList = make(map[string]map[string]ForeignKeyRelation)
+
 	var ret = make(ToMakeStruct)
 	var lineToRet = make([]ToMakeStructKey, 0)
 
@@ -59,8 +61,16 @@ func ToStruct(db *sql.DB, ctx context.Context, tableName string, data map[string
 	}
 
 	for _, name := range tableNameList {
+		var listOfColType = make(map[string]ColumnType)
 		var listForeignKey map[string]ForeignKeyRelation
 		var listPrimaryKey map[string]PrimaryKeyRelation
+
+		err, listOfColType = ListColumnTypes(db, ctx, name)
+		if err != nil {
+			return err, nil
+		}
+
+		tableDescrptionList[name] = listOfColType
 
 		err, listPrimaryKey = ListPrimaryKeyColumns(db, ctx, name)
 		if err != nil {
@@ -94,7 +104,7 @@ func ToStruct(db *sql.DB, ctx context.Context, tableName string, data map[string
 				IsPrimaryKey: true,
 			})
 		} else if isForeignKey == true {
-			structKey, structType, structRealType := isForeignKeyColumn(dataCol, foreignKeyData.ReferencedObject)
+			structKey, structType, structRealType := isForeignKeyColumn(dataCol, foreignKeyData.ReferencedObject, tableDescrptionList)
 			lineToRet = append(lineToRet, ToMakeStructKey{
 				Name:         structKey,
 				TypeString:   structType,
@@ -122,7 +132,7 @@ func isPrimaryKeyColumn(dataColumn ColumnType) (string, string, reflect.Type) {
 	return dataColumn.NameWithRule, dataColumn.ScanType.String(), dataColumn.ScanType
 }
 
-func isForeignKeyColumn(dataColumn ColumnType, tableName string) (string, string, reflect.Type) {
+func isForeignKeyColumn(dataColumn ColumnType, tableName string, dbConfig map[string]map[string]ColumnType) (string, string, reflect.Type) {
 	_, tableName = NameRules(tableName)
 	return tableName, tableName, dataColumn.ScanType
 }
