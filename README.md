@@ -4,6 +4,58 @@ Este é um script preliminar para ajudar a exportar dados do mssql.
 
 A ideia básica é simples, você aponta um banco de dados e ele monta um código golang
 
+```sql
+USE [kemper2]
+GO
+
+/****** Object:  Table [dbo].[test]    Script Date: 17/05/2020 20:48:31 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE TABLE [dbo].[test](
+	[id] [bigint] NOT NULL,
+	[nome] [nchar](255) NULL,
+ CONSTRAINT [PK_test] PRIMARY KEY CLUSTERED 
+(
+	[id] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+```
+
+```sql
+USE [kemper2]
+GO
+
+/****** Object:  Table [dbo].[relacao]    Script Date: 17/05/2020 20:45:38 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE TABLE [dbo].[relacao](
+	[id] [bigint] NOT NULL,
+	[id_test] [bigint] NULL,
+	[name] [nchar](255) NULL,
+ CONSTRAINT [PK_relacao] PRIMARY KEY CLUSTERED 
+(
+	[id] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+
+ALTER TABLE [dbo].[relacao]  WITH CHECK ADD  CONSTRAINT [FK_relacao_test] FOREIGN KEY([id_test])
+REFERENCES [dbo].[test] ([id])
+GO
+
+ALTER TABLE [dbo].[relacao] CHECK CONSTRAINT [FK_relacao_test]
+GO
+```
+
 ```golang
 func main() {
 
