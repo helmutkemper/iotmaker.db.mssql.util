@@ -6,19 +6,8 @@ import (
 	"fmt"
 )
 
-type ForeignKeyRelation struct {
-	ForeignKeyName                     string
-	TableName                          string
-	ConstraintColumnName               string
-	ReferencedObject                   string
-	ReferencedColumnName               string
-	IsDisabled                         string
-	DeleteReferentialActionDescription string
-	UpdateReferentialActionDescription string
-}
-
-func ListForeignKeyColumns(db *sql.DB, ctx context.Context, tableName string) (error, []ForeignKeyRelation) {
-	var returnList = make([]ForeignKeyRelation, 0)
+func ListForeignKeyColumns(db *sql.DB, ctx context.Context, tableName string) (error, map[string]ForeignKeyRelation) {
+	var returnList = make(map[string]ForeignKeyRelation)
 	var err error
 	var queryReturn *sql.Rows
 
@@ -56,7 +45,7 @@ func ListForeignKeyColumns(db *sql.DB, ctx context.Context, tableName string) (e
 			return err, nil
 		}
 
-		returnList = append(returnList, line)
+		returnList[line.ConstraintColumnName] = line
 	}
 
 	return nil, returnList
