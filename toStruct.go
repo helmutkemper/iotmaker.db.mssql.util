@@ -16,6 +16,9 @@ type ToMakeStructKey struct {
 	SqlTag       string
 	IsPrimaryKey bool
 	IsForeignKey bool
+	ToQuery      string
+	ToVars       string
+	ToScan       string
 }
 
 func (el ToMakeStruct) MakeStructText(tagSql string) string {
@@ -27,7 +30,7 @@ func (el ToMakeStruct) MakeStructText(tagSql string) string {
 			if lineData.IsPrimaryKey == true {
 				ret += fmt.Sprintf("  %v  %v `%v:\"%v\" primaryKey:\"true\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag)
 			} else if lineData.IsForeignKey == true {
-				ret += fmt.Sprintf("  %v  []Table%v `%v:\"%v\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag)
+				ret += fmt.Sprintf("  %v  []Table%v `%v:\"%v\" query:\"%v\" scan:\"%v\" vars:\"%v\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag, lineData.ToQuery, lineData.ToScan, lineData.ToVars)
 			} else {
 				ret += fmt.Sprintf("  %v  %v `%v:\"%v\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag)
 			}
@@ -104,13 +107,16 @@ func ToStruct(db *sql.DB, ctx context.Context, tableName string, data map[string
 				IsPrimaryKey: true,
 			})
 		} else if isForeignKey == true {
-			structKey, structType, structRealType := isForeignKeyColumn(dataCol, foreignKeyData.ReferencedObject, tableDescrptionList)
+			structKey, structType, query, scanFromQuery, varFromQuery, structRealType := isForeignKeyColumn(dataCol, foreignKeyData.ReferencedObject, tableDescrptionList)
 			lineToRet = append(lineToRet, ToMakeStructKey{
 				Name:         structKey,
 				TypeString:   structType,
 				TypeReflect:  structRealType,
 				SqlTag:       dataCol.Name,
 				IsForeignKey: true,
+				ToQuery:      query,
+				ToScan:       scanFromQuery,
+				ToVars:       varFromQuery,
 			})
 		} else {
 			structKey, structType, structRealType := normalKeyColumn(dataCol)
@@ -132,9 +138,38 @@ func isPrimaryKeyColumn(dataColumn ColumnType) (string, string, reflect.Type) {
 	return dataColumn.NameWithRule, dataColumn.ScanType.String(), dataColumn.ScanType
 }
 
-func isForeignKeyColumn(dataColumn ColumnType, tableName string, dbConfig map[string]map[string]ColumnType) (string, string, reflect.Type) {
+func isForeignKeyColumn(dataColumn ColumnType, tableName string, dbConfig map[string]map[string]ColumnType) (string, string, string, string, string, reflect.Type) {
+	var primaryKey string
+	var query string
+	var scanFromQuery string
+	var varFromQuery string
+
+	query += fmt.Sprintf("SELECT ")
+
+	l := len(dbConfig) - 1
+	c := 0
+	for k, v := range dbConfig[tableName] {
+		query += fmt.Sprintf("%v", k)
+		scanFromQuery += fmt.Sprintf("&column%v", v.NameWithRule)
+		varFromQuery += fmt.Sprintf("  var column%v %v\\n", v.NameWithRule, v.ScanType.String())
+
+		if v.IsPrimaryKey == true {
+			primaryKey = k
+		}
+
+		if c != l {
+			query += fmt.Sprint(", ")
+			scanFromQuery += fmt.Sprint(", ")
+		} else {
+			query += fmt.Sprint(" ")
+		}
+
+		c += 1
+	}
+
+	query += fmt.Sprintf("FROM %v WHERE %v = %%v", tableName, primaryKey)
 	_, tableName = NameRules(tableName)
-	return tableName, tableName, dataColumn.ScanType
+	return tableName, tableName, query, scanFromQuery, varFromQuery, dataColumn.ScanType
 }
 
 func normalKeyColumn(dataColumn ColumnType) (string, string, reflect.Type) {

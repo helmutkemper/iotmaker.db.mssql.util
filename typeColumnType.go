@@ -13,5 +13,6 @@ type ColumnType struct {
 	LengthOkToUse        bool
 	Nullable             bool
 	NullableOkToUse      bool
+	IsPrimaryKey         bool
 	ScanType             reflect.Type
 }
