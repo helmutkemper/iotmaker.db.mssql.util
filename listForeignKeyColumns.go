@@ -1,17 +1,16 @@
 package iotmaker_db_mssql_util
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 )
 
-func ListForeignKeyColumns(db *sql.DB, ctx context.Context, tableName string) (error, map[string]ForeignKeyRelation) {
+func (el GoToMSSqlCode) ListForeignKeyColumns(tableName string) (error, map[string]ForeignKeyRelation) {
 	var returnList = make(map[string]ForeignKeyRelation)
 	var err error
 	var queryReturn *sql.Rows
 
-	queryReturn, err = db.QueryContext(ctx, fmt.Sprintf(`SELECT
+	queryReturn, err = el.Db.QueryContext(el.Ctx, fmt.Sprintf(`SELECT
       f.name AS foreign_key_name
      ,OBJECT_NAME(f.parent_object_id) AS table_name
      ,COL_NAME(fc.parent_object_id, fc.parent_column_id) AS constraint_column_name

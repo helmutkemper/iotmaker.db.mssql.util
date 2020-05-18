@@ -1,12 +1,11 @@
 package iotmaker_db_mssql_util
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 )
 
-func ListColumnTypes(db *sql.DB, ctx context.Context, tableName string) (error, map[string]ColumnType) {
+func (el GoToMSSqlCode) ListColumnTypes(tableName string) (error, map[string]ColumnType) {
 	var err error
 	var queryReturn *sql.Rows
 	var ret = make(map[string]ColumnType)
@@ -15,12 +14,12 @@ func ListColumnTypes(db *sql.DB, ctx context.Context, tableName string) (error, 
 	var listPriparyKey = make(map[string]PrimaryKeyRelation)
 	var isPrimaryKey bool
 
-	err, listPriparyKey = ListPrimaryKeyColumns(db, ctx, tableName)
+	err, listPriparyKey = el.ListPrimaryKeyColumns(tableName)
 	if err != nil {
 		return err, nil
 	}
 
-	queryReturn, err = db.QueryContext(ctx, fmt.Sprintf("SELECT * FROM %v;", tableName))
+	queryReturn, err = el.Db.QueryContext(el.Ctx, fmt.Sprintf("SELECT * FROM %v;", tableName))
 	if err != nil {
 		return err, nil
 	}

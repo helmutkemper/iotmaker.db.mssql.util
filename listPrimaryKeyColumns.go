@@ -1,17 +1,16 @@
 package iotmaker_db_mssql_util
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 )
 
-func ListPrimaryKeyColumns(db *sql.DB, ctx context.Context, tableName string) (error, map[string]PrimaryKeyRelation) {
+func (el GoToMSSqlCode) ListPrimaryKeyColumns(tableName string) (error, map[string]PrimaryKeyRelation) {
 	var returnList = make(map[string]PrimaryKeyRelation)
 	var err error
 	var queryReturn *sql.Rows
 
-	queryReturn, err = db.QueryContext(ctx, fmt.Sprintf(`SELECT 
+	queryReturn, err = el.Db.QueryContext(el.Ctx, fmt.Sprintf(`SELECT 
 	tab.TABLE_NAME AS tableName, 
 	col.COLUMN_NAME AS columnName, 
 	col.CONSTRAINT_SCHEMA AS constraintName

@@ -1,16 +1,15 @@
 package iotmaker_db_mssql_util
 
 import (
-	"context"
 	"database/sql"
 )
 
-func ListTables(db *sql.DB, ctx context.Context) (error, []string) {
+func (el GoToMSSqlCode) ListTables() (error, []string) {
 	var returnList = make([]string, 0)
 	var err error
 	var queryReturn *sql.Rows
 
-	queryReturn, err = db.QueryContext(ctx, "SELECT name FROM SYSOBJECTS WHERE xtype = 'U';")
+	queryReturn, err = el.Db.QueryContext(el.Ctx, "SELECT name FROM SYSOBJECTS WHERE xtype = 'U';")
 	if err != nil {
 		return err, []string{}
 	}
