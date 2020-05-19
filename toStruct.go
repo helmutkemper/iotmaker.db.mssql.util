@@ -17,15 +17,16 @@ type GoToMSSqlCode struct {
 type ToMakeStruct map[string][]ToMakeStructKey
 
 type ToMakeStructKey struct {
-	Name         string
-	TypeString   string
-	TypeReflect  reflect.Type
-	SqlTag       string
-	IsPrimaryKey bool
-	IsForeignKey bool
-	ToQuery      string
-	ToVars       string
-	ToScan       string
+	Name              string
+	TypeString        string
+	TypeReflect       reflect.Type
+	SqlTag            string
+	IsPrimaryKey      bool
+	IsForeignKey      bool
+	ToPrimaryKeyQuery string
+	ToForeignKeyQuery string
+	ToVars            string
+	ToScan            string
 }
 
 func (el ToMakeStruct) MakeStructText(tagSql string) string {
@@ -37,7 +38,7 @@ func (el ToMakeStruct) MakeStructText(tagSql string) string {
 			if lineData.IsPrimaryKey == true {
 				ret += fmt.Sprintf("  %v  %v `%v:\"%v\" primaryKey:\"true\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag)
 			} else if lineData.IsForeignKey == true {
-				ret += fmt.Sprintf("  %v  []Table%v `%v:\"Table%v\" query:\"%v\" scan:\"%v\" vars:\"%v\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag, lineData.ToQuery, lineData.ToScan, lineData.ToVars)
+				ret += fmt.Sprintf("  %v  []Table%v `%v:\"Table%v\" primaryKeyQuery:\"%v\" foreignKeyQuery:\"%v\" scan:\"%v\" vars:\"%v\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag, lineData.ToPrimaryKeyQuery, lineData.ToForeignKeyQuery, lineData.ToScan, lineData.ToVars)
 			} else {
 				ret += fmt.Sprintf("  %v  %v `%v:\"%v\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag)
 			}
@@ -104,42 +105,45 @@ func (el *GoToMSSqlCode) ToStruct() (error, ToMakeStruct) {
 			_, isForeignKey := foreignTableList[tableName][dataCol.Name]
 			if isPrimaryKey == true {
 				lineToRet = append(lineToRet, ToMakeStructKey{
-					Name:         dataCol.NameWithRule,
-					TypeString:   dataCol.GetScanTypeAsString(),
-					TypeReflect:  dataCol.GetScanType(),
-					SqlTag:       dataCol.Name,
-					IsPrimaryKey: true,
-					IsForeignKey: false,
-					ToQuery:      "",
-					ToScan:       "",
-					ToVars:       "",
+					Name:              dataCol.NameWithRule,
+					TypeString:        dataCol.GetScanTypeAsString(),
+					TypeReflect:       dataCol.GetScanType(),
+					SqlTag:            dataCol.Name,
+					IsPrimaryKey:      true,
+					IsForeignKey:      false,
+					ToForeignKeyQuery: "",
+					ToPrimaryKeyQuery: "",
+					ToScan:            "",
+					ToVars:            "",
 				})
 			} else if isForeignKey == true {
 				referenceTableName := foreignTableList[tableName][dataCol.Name].ReferencedObject
 				_, referenceTableNameWithRule := NameRules(referenceTableName)
 
 				lineToRet = append(lineToRet, ToMakeStructKey{
-					Name:         referenceTableNameWithRule,
-					TypeString:   referenceTableNameWithRule,
-					TypeReflect:  dataCol.GetScanType(),
-					SqlTag:       referenceTableNameWithRule,
-					IsPrimaryKey: false,
-					IsForeignKey: true,
-					ToQuery:      el.mountQuery(referenceTableName),
-					ToScan:       el.mountScanVars(referenceTableName),
-					ToVars:       el.mountVars(referenceTableName),
+					Name:              referenceTableNameWithRule,
+					TypeString:        referenceTableNameWithRule,
+					TypeReflect:       dataCol.GetScanType(),
+					SqlTag:            referenceTableNameWithRule,
+					IsPrimaryKey:      false,
+					IsForeignKey:      true,
+					ToPrimaryKeyQuery: el.mountQuery(tableName, false),
+					ToForeignKeyQuery: el.mountQuery(referenceTableName, true),
+					ToScan:            el.mountScanVars(referenceTableName),
+					ToVars:            el.mountVars(referenceTableName),
 				})
 			} else {
 				lineToRet = append(lineToRet, ToMakeStructKey{
-					Name:         dataCol.NameWithRule,
-					TypeString:   dataCol.GetScanTypeAsString(),
-					TypeReflect:  dataCol.GetScanType(),
-					SqlTag:       dataCol.Name,
-					IsPrimaryKey: false,
-					IsForeignKey: false,
-					ToQuery:      "",
-					ToScan:       "",
-					ToVars:       "",
+					Name:              dataCol.NameWithRule,
+					TypeString:        dataCol.GetScanTypeAsString(),
+					TypeReflect:       dataCol.GetScanType(),
+					SqlTag:            dataCol.Name,
+					IsPrimaryKey:      false,
+					IsForeignKey:      false,
+					ToPrimaryKeyQuery: "",
+					ToForeignKeyQuery: "",
+					ToScan:            "",
+					ToVars:            "",
 				})
 			}
 		}
@@ -150,13 +154,13 @@ func (el *GoToMSSqlCode) ToStruct() (error, ToMakeStruct) {
 	return nil, ret
 }
 
-func (el GoToMSSqlCode) mountQuery(tableName string) string {
+func (el GoToMSSqlCode) mountQuery(tableName string, foreignKey bool) string {
 	var primaryKey string
 	var query string
 
 	query += fmt.Sprintf("SELECT ")
 
-	l := len(el.dbConfig) - 1
+	l := len(el.dbConfig[tableName]) - 1
 	c := 0
 	for k, v := range el.dbConfig[tableName] {
 		query += fmt.Sprintf("%v", k)
@@ -174,7 +178,11 @@ func (el GoToMSSqlCode) mountQuery(tableName string) string {
 		c += 1
 	}
 
-	query += fmt.Sprintf("FROM %v WHERE %v = %%v", tableName, primaryKey)
+	if foreignKey == true {
+		query += fmt.Sprintf("FROM %v WHERE %v = %%v", tableName, primaryKey)
+	} else {
+		query += fmt.Sprintf("FROM %v", tableName)
+	}
 
 	return query
 }
