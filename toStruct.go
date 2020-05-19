@@ -37,7 +37,7 @@ func (el ToMakeStruct) MakeStructText(tagSql string) string {
 			if lineData.IsPrimaryKey == true {
 				ret += fmt.Sprintf("  %v  %v `%v:\"%v\" primaryKey:\"true\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag)
 			} else if lineData.IsForeignKey == true {
-				ret += fmt.Sprintf("  %v  []Table%v `%v:\"%v\" query:\"%v\" scan:\"%v\" vars:\"%v\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag, lineData.ToQuery, lineData.ToScan, lineData.ToVars)
+				ret += fmt.Sprintf("  %v  []Table%v `%v:\"Table%v\" query:\"%v\" scan:\"%v\" vars:\"%v\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag, lineData.ToQuery, lineData.ToScan, lineData.ToVars)
 			} else {
 				ret += fmt.Sprintf("  %v  %v `%v:\"%v\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag)
 			}
@@ -109,6 +109,10 @@ func (el *GoToMSSqlCode) ToStruct() (error, ToMakeStruct) {
 					TypeReflect:  dataCol.GetScanType(),
 					SqlTag:       dataCol.Name,
 					IsPrimaryKey: true,
+					IsForeignKey: false,
+					ToQuery:      "",
+					ToScan:       "",
+					ToVars:       "",
 				})
 			} else if isForeignKey == true {
 				referenceTableName := foreignTableList[tableName][dataCol.Name].ReferencedObject
@@ -118,7 +122,8 @@ func (el *GoToMSSqlCode) ToStruct() (error, ToMakeStruct) {
 					Name:         referenceTableNameWithRule,
 					TypeString:   referenceTableNameWithRule,
 					TypeReflect:  dataCol.GetScanType(),
-					SqlTag:       dataCol.Name,
+					SqlTag:       referenceTableNameWithRule,
+					IsPrimaryKey: false,
 					IsForeignKey: true,
 					ToQuery:      el.mountQuery(referenceTableName),
 					ToScan:       el.mountScanVars(referenceTableName),
@@ -126,10 +131,15 @@ func (el *GoToMSSqlCode) ToStruct() (error, ToMakeStruct) {
 				})
 			} else {
 				lineToRet = append(lineToRet, ToMakeStructKey{
-					Name:        dataCol.NameWithRule,
-					TypeString:  dataCol.GetScanTypeAsString(),
-					TypeReflect: dataCol.GetScanType(),
-					SqlTag:      dataCol.Name,
+					Name:         dataCol.NameWithRule,
+					TypeString:   dataCol.GetScanTypeAsString(),
+					TypeReflect:  dataCol.GetScanType(),
+					SqlTag:       dataCol.Name,
+					IsPrimaryKey: false,
+					IsForeignKey: false,
+					ToQuery:      "",
+					ToScan:       "",
+					ToVars:       "",
 				})
 			}
 		}
@@ -234,7 +244,3 @@ func isForeignKeyColumn(dataColumn ColumnType, tableName string, dbConfig map[st
 func normalKeyColumn(dataColumn ColumnType) (string, string, reflect.Type) {
 	return dataColumn.NameWithRule, dataColumn.ScanType.String(), dataColumn.ScanType
 }
-
-/*
-element := reflect.ValueOf(el).Elem()
-*/
