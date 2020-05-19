@@ -3,6 +3,7 @@ package iotmaker_db_mssql_util
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"reflect"
 )
@@ -18,6 +19,7 @@ type ToMakeStruct map[string][]ToMakeStructKey
 
 type ToMakeStructKey struct {
 	Name              string
+	NameOfPrimaryKey  string
 	TypeString        string
 	TypeReflect       reflect.Type
 	SqlTag            string
@@ -25,8 +27,10 @@ type ToMakeStructKey struct {
 	IsForeignKey      bool
 	ToPrimaryKeyQuery string
 	ToForeignKeyQuery string
-	ToVars            string
-	ToScan            string
+	ToPrimaryKeyVars  string
+	ToForeignKeyVars  string
+	ToPrimaryKeyScan  string
+	ToForeignKeyScan  string
 }
 
 func (el ToMakeStruct) MakeStructText(tagSql string) string {
@@ -38,7 +42,19 @@ func (el ToMakeStruct) MakeStructText(tagSql string) string {
 			if lineData.IsPrimaryKey == true {
 				ret += fmt.Sprintf("  %v  %v `%v:\"%v\" primaryKey:\"true\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag)
 			} else if lineData.IsForeignKey == true {
-				ret += fmt.Sprintf("  %v  []Table%v `%v:\"Table%v\" primaryKeyQuery:\"%v\" foreignKeyQuery:\"%v\" scan:\"%v\" vars:\"%v\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag, lineData.ToPrimaryKeyQuery, lineData.ToForeignKeyQuery, lineData.ToScan, lineData.ToVars)
+				ret += fmt.Sprintf("  %v  []Table%v `%v:\"Table%v\" primaryKeyQuery:\"%v\" foreignKeyQuery:\"%v\" foreignKeyScan:\"%v\" foreignKeyVars:\"%v\" primaryKeyScan:\"%v\" primaryKeyVars:\"%v\" primaKeyFieldName:\"%v\"`\n",
+					lineData.Name,
+					lineData.TypeString,
+					tagSql,
+					lineData.SqlTag,
+					lineData.ToPrimaryKeyQuery,
+					lineData.ToForeignKeyQuery,
+					lineData.ToForeignKeyScan,
+					lineData.ToForeignKeyVars,
+					lineData.ToPrimaryKeyScan,
+					lineData.ToPrimaryKeyVars,
+					lineData.NameOfPrimaryKey,
+				)
 			} else {
 				ret += fmt.Sprintf("  %v  %v `%v:\"%v\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag)
 			}
@@ -56,6 +72,7 @@ func (el *GoToMSSqlCode) ToStruct() (error, ToMakeStruct) {
 	var primaryTableList = make(map[string]map[string]PrimaryKeyRelation)
 	var foreignTableList = make(map[string]map[string]ForeignKeyRelation)
 	var ret = make(ToMakeStruct)
+	var primaryKeyTableName string
 
 	el.dbConfig = make(map[string]map[string]ColumnType)
 
@@ -96,8 +113,22 @@ func (el *GoToMSSqlCode) ToStruct() (error, ToMakeStruct) {
 	}
 
 	for tableName, tableData := range el.dbConfig {
+		err, primaryKeyTableName = el.getPrimaryKeyName(tableName)
+		if err != nil {
+			return err, nil
+		}
 
-		_, tableNameWithRules := NameRules(tableName)
+		err, primaryKeyTableName := NameRules(primaryKeyTableName)
+		if err != nil {
+			return err, nil
+		}
+		primaryKeyTableName = "column" + primaryKeyTableName
+
+		err, tableNameWithRules := NameRules(tableName)
+		if err != nil {
+			return err, nil
+		}
+
 		var lineToRet = make([]ToMakeStructKey, 0)
 
 		for _, dataCol := range tableData {
@@ -106,6 +137,7 @@ func (el *GoToMSSqlCode) ToStruct() (error, ToMakeStruct) {
 			if isPrimaryKey == true {
 				lineToRet = append(lineToRet, ToMakeStructKey{
 					Name:              dataCol.NameWithRule,
+					NameOfPrimaryKey:  "",
 					TypeString:        dataCol.GetScanTypeAsString(),
 					TypeReflect:       dataCol.GetScanType(),
 					SqlTag:            dataCol.Name,
@@ -113,8 +145,10 @@ func (el *GoToMSSqlCode) ToStruct() (error, ToMakeStruct) {
 					IsForeignKey:      false,
 					ToForeignKeyQuery: "",
 					ToPrimaryKeyQuery: "",
-					ToScan:            "",
-					ToVars:            "",
+					ToPrimaryKeyScan:  "",
+					ToForeignKeyScan:  "",
+					ToPrimaryKeyVars:  "",
+					ToForeignKeyVars:  "",
 				})
 			} else if isForeignKey == true {
 				referenceTableName := foreignTableList[tableName][dataCol.Name].ReferencedObject
@@ -122,6 +156,7 @@ func (el *GoToMSSqlCode) ToStruct() (error, ToMakeStruct) {
 
 				lineToRet = append(lineToRet, ToMakeStructKey{
 					Name:              referenceTableNameWithRule,
+					NameOfPrimaryKey:  primaryKeyTableName,
 					TypeString:        referenceTableNameWithRule,
 					TypeReflect:       dataCol.GetScanType(),
 					SqlTag:            referenceTableNameWithRule,
@@ -129,12 +164,15 @@ func (el *GoToMSSqlCode) ToStruct() (error, ToMakeStruct) {
 					IsForeignKey:      true,
 					ToPrimaryKeyQuery: el.mountQuery(tableName, false),
 					ToForeignKeyQuery: el.mountQuery(referenceTableName, true),
-					ToScan:            el.mountScanVars(referenceTableName),
-					ToVars:            el.mountVars(referenceTableName),
+					ToPrimaryKeyScan:  el.mountScanVars(tableName),
+					ToForeignKeyScan:  el.mountScanVars(referenceTableName),
+					ToPrimaryKeyVars:  el.mountVars(tableName),
+					ToForeignKeyVars:  el.mountVars(referenceTableName),
 				})
 			} else {
 				lineToRet = append(lineToRet, ToMakeStructKey{
 					Name:              dataCol.NameWithRule,
+					NameOfPrimaryKey:  "",
 					TypeString:        dataCol.GetScanTypeAsString(),
 					TypeReflect:       dataCol.GetScanType(),
 					SqlTag:            dataCol.Name,
@@ -142,8 +180,10 @@ func (el *GoToMSSqlCode) ToStruct() (error, ToMakeStruct) {
 					IsForeignKey:      false,
 					ToPrimaryKeyQuery: "",
 					ToForeignKeyQuery: "",
-					ToScan:            "",
-					ToVars:            "",
+					ToPrimaryKeyScan:  "",
+					ToForeignKeyScan:  "",
+					ToPrimaryKeyVars:  "",
+					ToForeignKeyVars:  "",
 				})
 			}
 		}
@@ -152,6 +192,18 @@ func (el *GoToMSSqlCode) ToStruct() (error, ToMakeStruct) {
 	}
 
 	return nil, ret
+}
+
+func (el GoToMSSqlCode) getPrimaryKeyName(tableName string) (error, string) {
+
+	for k, v := range el.dbConfig[tableName] {
+
+		if v.IsPrimaryKey == true {
+			return nil, k
+		}
+	}
+
+	return errors.New("primary key not found"), ""
 }
 
 func (el GoToMSSqlCode) mountQuery(tableName string, foreignKey bool) string {
@@ -200,7 +252,7 @@ func (el GoToMSSqlCode) mountVars(tableName string) string {
 func (el GoToMSSqlCode) mountScanVars(tableName string) string {
 	var scanFromQuery string
 
-	l := len(el.dbConfig) - 1
+	l := len(el.dbConfig[tableName]) - 1
 	c := 0
 	for _, v := range el.dbConfig[tableName] {
 		scanFromQuery += fmt.Sprintf("&column%v", v.NameWithRule)
@@ -215,7 +267,7 @@ func (el GoToMSSqlCode) mountScanVars(tableName string) string {
 	return scanFromQuery
 }
 
-func isForeignKeyColumn(dataColumn ColumnType, tableName string, dbConfig map[string]map[string]ColumnType) (string, string, string, string, string, reflect.Type) {
+func ______isForeignKeyColumn(dataColumn ColumnType, tableName string, dbConfig map[string]map[string]ColumnType) (string, string, string, string, string, reflect.Type) {
 	var primaryKey string
 	var query string
 	var scanFromQuery string
