@@ -363,10 +363,11 @@ type TableTest struct {
   Nome  string `sql:"nome"`
 }
 type TableRelacao struct {
-  Id  int64 `sql:"id" primaryKey:"true"`
-  Test  []TableTest `sql:"TableTest" query:"SELECT id, nome FROM test WHERE id = %v" scan:"&columnId, &columnNome" vars:"  var columnId int64\n  var columnNome string\n"`
+  Test  []TableTest `sql:"TableTest" primaryKeyQuery:"SELECT id_test, name, id FROM relacao" foreignKeyQuery:"SELECT id, nome FROM test WHERE id = %v" foreignKeyScan:"&columnId, &columnNome" foreignKeyVars:"  var columnId int64\n  var columnNome string\n" primaryKeyScan:"&columnId, &columnIdTest, &columnName" primaryKeyVars:"  var columnName string\n  var columnId int64\n  var columnIdTest int64\n" primaKeyFieldName:"columnId"`
   Name  string `sql:"name"`
+  Id  int64 `sql:"id" primaryKey:"true"`
 }
+
 
 func test(ctx context.Context, db *sql.DB, id int64) error {
   //var err error
@@ -379,20 +380,30 @@ func test(ctx context.Context, db *sql.DB, id int64) error {
     tag := typeField.Tag
 
     tagField := tag.Get("sql")
-    tagQuery := tag.Get("query")
-    tagScan  := tag.Get("scan")
-    tagVars  := tag.Get("vars")
+    tagPrimaKeyFieldName := tag.Get("primaKeyFieldName")
+    tagPrimaryKeyQuery := tag.Get("primaryKeyQuery")
+    tagForeignKeyQuery := tag.Get("foreignKeyQuery")
+    tagPrimaryKeyScan  := tag.Get("primaryKeyScan")
+    tagForeignKeyScan  := tag.Get("foreignKeyScan")
+    tagPrimaryKeyVars  := tag.Get("primaryKeyVars")
+    tagForeignKeyVars  := tag.Get("foreignKeyVars")
 
     tagFieldBool := tagField == ""
-    tagQueryBool := tagQuery == ""
-    tagScanBool  := tagScan == ""
-    tagVarsBool  := tagVars == ""
+    tagPrimaKeyFieldNameBool := tagPrimaKeyFieldName == ""
+    tagPrimaryKeyQueryBool := tagPrimaryKeyQuery == ""
+    tagForeignKeyQueryBool := tagForeignKeyQuery == ""
+    tagPrimaryKeyScanBool  := tagPrimaryKeyScan == ""
+    tagForeignKeyScanBool  := tagForeignKeyScan == ""
+    tagPrimaryKeyVarsBool  := tagPrimaryKeyVars == ""
+    tagForeignKeyVarsBool  := tagForeignKeyVars == ""
 
-    andLogic := tagFieldBool && tagQueryBool && tagScanBool && tagVarsBool == true
-    orLogic := tagFieldBool || tagQueryBool || tagScanBool || tagVarsBool == true
+    andPrimaryKeyLogic := tagPrimaKeyFieldNameBool && tagFieldBool && tagPrimaryKeyQueryBool && tagPrimaryKeyScanBool && tagPrimaryKeyVarsBool == true
+    andForeignKeyLogic := tagPrimaKeyFieldNameBool && tagFieldBool && tagForeignKeyQueryBool && tagForeignKeyScanBool && tagForeignKeyVarsBool == true
+    orPrimaryKeyLogic := tagPrimaKeyFieldNameBool && tagFieldBool || tagPrimaryKeyQueryBool || tagPrimaryKeyScanBool || tagPrimaryKeyVarsBool == true
+    orForeignKeyLogic := tagPrimaKeyFieldNameBool && tagFieldBool || tagForeignKeyQueryBool || tagForeignKeyScanBool || tagForeignKeyVarsBool == true
 
-    if andLogic == false && orLogic == true {
-      return errors.New("tags 'sql', 'query', 'scan' and 'vars' are necessary for this function")
+    if andPrimaryKeyLogic == false && andForeignKeyLogic == false && orPrimaryKeyLogic == true && orForeignKeyLogic == true {
+      return errors.New("tags 'sql', 'primaKeyFieldName', 'primaryKeyQuery', 'foreignKeyQuery', 'primaryKeyScan', 'foreignKeyScan', 'primaryKeyVars' and 'foreignKeyVars' are necessary for this function")
     }
 
 
@@ -401,35 +412,72 @@ func test(ctx context.Context, db *sql.DB, id int64) error {
   return nil
 }
 
+/*
+ sql:"TableTest"
+ primaryKeyQuery:"SELECT id_test, name, id FROM relacao"
+ foreignKeyQuery:"SELECT id, nome FROM test WHERE id = %v"
+ foreignKeyScan:"&columnId, &columnNome"
+ foreignKeyVars:"  var columnId int64\n  var columnNome string\n"
+ primaryKeyScan:"&columnId, &columnIdTest, &columnName"
+ primaryKeyVars:"  var columnName string\n  var columnId int64\n  var columnIdTest int64\n"
+ primaKeyFieldName:"columnId"
+*/
+
 func correct(ctx context.Context, db *sql.DB, id int64, toProcessFunc func(interface{})) error {
 
   var err error
-  var rows *sql.Rows
+  var primaryKeyWows, foreignKeyWows  *sql.Rows
+  var tableRelacao TableRelacao
 
-  rows, err = db.QueryContext(ctx, fmt.Sprintf("SELECT id, nome FROM test WHERE id = %v", id))
+  primaryKeyWows, err = db.QueryContext(ctx, fmt.Sprintf("SELECT id, id_test, name FROM relacao"))
   if err != nil {
     return err
   }
 
-  var toProcessData TableTest
-  var columnId int64
-  var columnNome string
+  for primaryKeyWows.Next() {
+    var tableRelacaoColumnName string
+    var tableRelacaoColumnId int64
+    var tableRelacaoColumnIdTest int64
 
-  for rows.Next() {
-    err = rows.Scan(&columnId, &columnNome)
+    err = primaryKeyWows.Scan(&tableRelacaoColumnId, &tableRelacaoColumnIdTest, &tableRelacaoColumnName)
     if err != nil {
       return err
     }
 
-    toProcessData = TableTest{
-      Id:   columnId,
-      Nome: columnNome,
+    foreignKeyWows, err = db.QueryContext(ctx, fmt.Sprintf("SELECT id, nome FROM test WHERE id = %v", tableRelacaoColumnId))
+    if err != nil {
+      return err
     }
 
-    toProcessFunc(toProcessData)
+    var dataTableTest = make([]TableTest, 0)
+    for foreignKeyWows.Next() {
+      var tableTestColumnId int64
+      var tableTestColumnNome string
+
+      err = foreignKeyWows.Scan(&tableTestColumnId, &tableTestColumnNome)
+      if err != nil {
+        return err
+      }
+
+      dataTableTest = append(dataTableTest, TableTest{
+        Id:   tableTestColumnId,
+        Nome: tableTestColumnNome,
+      })
+    }
+
+    tableRelacao = TableRelacao{
+      Test: dataTableTest,
+      Name: tableRelacaoColumnName,
+      Id:   tableRelacaoColumnId,
+    }
+    functionCallBack(tableRelacao)
   }
 
   return nil
+}
+
+func functionCallBack(data interface{}) {
+
 }
 
 //Server=localhost;Database=master;Trusted_Connection=True;
