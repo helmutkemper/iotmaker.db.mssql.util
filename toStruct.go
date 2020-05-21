@@ -40,9 +40,32 @@ func (el ToMakeStruct) MakeStructText(tagSql string) string {
 		ret += fmt.Sprintf("type Table%v struct {\n", structName)
 		for _, lineData := range structData {
 			if lineData.IsPrimaryKey == true {
-				ret += fmt.Sprintf("  %v  %v `%v:\"%v\" primaryKey:\"true\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag)
+				ret += fmt.Sprintf("  %v  %v `\n"+
+					"%v:\"%v\" \n"+
+					"primaryKey:\"true\" \n"+
+					"primaryKeyQuery:\"%v\" \n"+
+					"primaryKeyScan:\"%v\" \n"+
+					"primaryKeyVars:\"%v\" \n"+
+					"`\n",
+					lineData.Name,
+					lineData.TypeString,
+					tagSql,
+					lineData.SqlTag,
+					lineData.ToPrimaryKeyQuery,
+					lineData.ToPrimaryKeyScan,
+					lineData.ToPrimaryKeyVars,
+				)
 			} else if lineData.IsForeignKey == true {
-				ret += fmt.Sprintf("  %v  []Table%v `%v:\"Table%v\" primaryKeyQuery:\"%v\" foreignKeyQuery:\"%v\" foreignKeyScan:\"%v\" foreignKeyVars:\"%v\" primaryKeyScan:\"%v\" primaryKeyVars:\"%v\" primaKeyFieldName:\"%v\"`\n",
+				ret += fmt.Sprintf("  %v  []Table%v `"+
+					"%v:\"Table%v\" "+
+					"primaryKeyQuery:\"%v\" \n"+
+					"foreignKeyQuery:\"%v\" \n"+
+					"foreignKeyScan:\"%v\" \n"+
+					"foreignKeyVars:\"%v\" \n"+
+					"primaryKeyScan:\"%v\" \n"+
+					"primaryKeyVars:\"%v\" \n"+
+					"primaKeyFieldName:\"%v\"\n"+
+					"`\n",
 					lineData.Name,
 					lineData.TypeString,
 					tagSql,
@@ -56,7 +79,14 @@ func (el ToMakeStruct) MakeStructText(tagSql string) string {
 					lineData.NameOfPrimaryKey,
 				)
 			} else {
-				ret += fmt.Sprintf("  %v  %v `%v:\"%v\"`\n", lineData.Name, lineData.TypeString, tagSql, lineData.SqlTag)
+				ret += fmt.Sprintf("  %v  %v `"+
+					"%v:\"%v\""+
+					"`\n",
+					lineData.Name,
+					lineData.TypeString,
+					tagSql,
+					lineData.SqlTag,
+				)
 			}
 		}
 
@@ -118,12 +148,6 @@ func (el *GoToMSSqlCode) ToStruct() (error, ToMakeStruct) {
 			return err, nil
 		}
 
-		err, primaryKeyTableName := NameRules(primaryKeyTableName)
-		if err != nil {
-			return err, nil
-		}
-		primaryKeyTableName = "column" + primaryKeyTableName
-
 		err, tableNameWithRules := NameRules(tableName)
 		if err != nil {
 			return err, nil
@@ -144,10 +168,10 @@ func (el *GoToMSSqlCode) ToStruct() (error, ToMakeStruct) {
 					IsPrimaryKey:      true,
 					IsForeignKey:      false,
 					ToForeignKeyQuery: "",
-					ToPrimaryKeyQuery: "",
-					ToPrimaryKeyScan:  "",
+					ToPrimaryKeyQuery: el.mountQuery(tableName, false),
+					ToPrimaryKeyScan:  el.mountScanVars(tableName),
 					ToForeignKeyScan:  "",
-					ToPrimaryKeyVars:  "",
+					ToPrimaryKeyVars:  el.mountVars(tableName),
 					ToForeignKeyVars:  "",
 				})
 			} else if isForeignKey == true {
@@ -194,12 +218,26 @@ func (el *GoToMSSqlCode) ToStruct() (error, ToMakeStruct) {
 	return nil, ret
 }
 
+func (el GoToMSSqlCode) getColumnName(columnName, tableName string) string {
+	tableNameWithRules := el.dbConfig[tableName][columnName].TableNameWithRule
+	columnNameWithRules := el.dbConfig[tableName][columnName].NameWithRule
+
+	return "table" + tableNameWithRules + "Column" + columnNameWithRules
+}
+
+func (el GoToMSSqlCode) getColumnNameWithSqlAsStatement(columnName, tableName string) string {
+	tableNameWithRules := el.dbConfig[tableName][columnName].TableNameWithRule
+	columnNameWithRules := el.dbConfig[tableName][columnName].NameWithRule
+
+	return columnName + " AS table" + tableNameWithRules + "Column" + columnNameWithRules
+}
+
 func (el GoToMSSqlCode) getPrimaryKeyName(tableName string) (error, string) {
 
-	for k, v := range el.dbConfig[tableName] {
+	for columnName, columnData := range el.dbConfig[tableName] {
 
-		if v.IsPrimaryKey == true {
-			return nil, k
+		if columnData.IsPrimaryKey == true {
+			return nil, el.getColumnName(columnName, tableName)
 		}
 	}
 
@@ -214,11 +252,11 @@ func (el GoToMSSqlCode) mountQuery(tableName string, foreignKey bool) string {
 
 	l := len(el.dbConfig[tableName]) - 1
 	c := 0
-	for k, v := range el.dbConfig[tableName] {
-		query += fmt.Sprintf("%v", k)
+	for columnName, columnData := range el.dbConfig[tableName] {
+		query += fmt.Sprintf("%v", columnName)
 
-		if v.IsPrimaryKey == true {
-			primaryKey = k
+		if columnData.IsPrimaryKey == true {
+			primaryKey = columnName
 		}
 
 		if c != l {
@@ -242,8 +280,8 @@ func (el GoToMSSqlCode) mountQuery(tableName string, foreignKey bool) string {
 func (el GoToMSSqlCode) mountVars(tableName string) string {
 	var varFromQuery string
 
-	for _, v := range el.dbConfig[tableName] {
-		varFromQuery += fmt.Sprintf("  var column%v %v\\n", v.NameWithRule, v.ScanType.String())
+	for columnName, columnData := range el.dbConfig[tableName] {
+		varFromQuery += fmt.Sprintf("var %v %v\\n", el.getColumnName(columnName, tableName), columnData.ScanType.String())
 	}
 
 	return varFromQuery
@@ -254,8 +292,8 @@ func (el GoToMSSqlCode) mountScanVars(tableName string) string {
 
 	l := len(el.dbConfig[tableName]) - 1
 	c := 0
-	for _, v := range el.dbConfig[tableName] {
-		scanFromQuery += fmt.Sprintf("&column%v", v.NameWithRule)
+	for columnName := range el.dbConfig[tableName] {
+		scanFromQuery += fmt.Sprintf("&%v", el.getColumnName(columnName, tableName))
 
 		if c != l {
 			scanFromQuery += fmt.Sprint(", ")
@@ -265,42 +303,4 @@ func (el GoToMSSqlCode) mountScanVars(tableName string) string {
 	}
 
 	return scanFromQuery
-}
-
-func ______isForeignKeyColumn(dataColumn ColumnType, tableName string, dbConfig map[string]map[string]ColumnType) (string, string, string, string, string, reflect.Type) {
-	var primaryKey string
-	var query string
-	var scanFromQuery string
-	var varFromQuery string
-
-	query += fmt.Sprintf("SELECT ")
-
-	l := len(dbConfig) - 1
-	c := 0
-	for k, v := range dbConfig[tableName] {
-		query += fmt.Sprintf("%v", k)
-		scanFromQuery += fmt.Sprintf("&column%v", v.NameWithRule)
-		varFromQuery += fmt.Sprintf("  var column%v %v\\n", v.NameWithRule, v.ScanType.String())
-
-		if v.IsPrimaryKey == true {
-			primaryKey = k
-		}
-
-		if c != l {
-			query += fmt.Sprint(", ")
-			scanFromQuery += fmt.Sprint(", ")
-		} else {
-			query += fmt.Sprint(" ")
-		}
-
-		c += 1
-	}
-
-	query += fmt.Sprintf("FROM %v WHERE %v = %%v", tableName, primaryKey)
-	_, tableName = NameRules(tableName)
-	return tableName, tableName, query, scanFromQuery, varFromQuery, dataColumn.ScanType
-}
-
-func normalKeyColumn(dataColumn ColumnType) (string, string, reflect.Type) {
-	return dataColumn.NameWithRule, dataColumn.ScanType.String(), dataColumn.ScanType
 }

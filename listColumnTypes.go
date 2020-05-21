@@ -13,13 +13,19 @@ func (el GoToMSSqlCode) ListColumnTypes(tableName string) (error, map[string]Col
 	var nameWithRule string
 	var listPriparyKey = make(map[string]PrimaryKeyRelation)
 	var isPrimaryKey bool
+	var tableNameWithRule string
+
+	err, tableNameWithRule = NameRules(tableName)
+	if err != nil {
+		return err, nil
+	}
 
 	err, listPriparyKey = el.ListPrimaryKeyColumns(tableName)
 	if err != nil {
 		return err, nil
 	}
 
-	queryReturn, err = el.Db.QueryContext(el.Ctx, fmt.Sprintf("SELECT * FROM %v;", tableName))
+	queryReturn, err = el.Db.QueryContext(el.Ctx, fmt.Sprintf("SELECT * FROM [%v];", tableName))
 	if err != nil {
 		return err, nil
 	}
@@ -46,6 +52,7 @@ func (el GoToMSSqlCode) ListColumnTypes(tableName string) (error, map[string]Col
 		var toAppend = ColumnType{
 			Name:                 name,
 			NameWithRule:         nameWithRule,
+			TableNameWithRule:    tableNameWithRule,
 			DatabaseTypeName:     value.DatabaseTypeName(),
 			DecimalSizePrecision: decimalSizePrecision,
 			DecimalSizeScale:     decimalSizeScale,

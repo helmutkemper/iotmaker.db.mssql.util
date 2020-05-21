@@ -6,6 +6,7 @@ type ColumnType struct {
 	Name                 string
 	NameWithRule         string
 	DatabaseTypeName     string
+	TableNameWithRule    string
 	DecimalSizePrecision int64
 	DecimalSizeScale     int64
 	DecimalSizeOkToUse   bool
