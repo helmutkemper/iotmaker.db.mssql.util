@@ -15,6 +15,7 @@ type ColumnType struct {
 	Nullable             bool
 	NullableOkToUse      bool
 	IsPrimaryKey         bool
+	IsForeignKey         bool
 	ScanType             reflect.Type
 }
 

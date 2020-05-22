@@ -21,7 +21,7 @@ WHERE
     Col.Constraint_Name = Tab.Constraint_Name
     AND Col.Table_Name = Tab.Table_Name
     AND Constraint_Type = 'PRIMARY KEY'
-    AND Col.Table_Name = '%v'`, tableName))
+    AND Col.Table_Name = '%v' ORDER BY columnName ASC`, tableName))
 	if err != nil {
 		return err, nil
 	}

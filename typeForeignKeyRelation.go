@@ -5,6 +5,7 @@ type ForeignKeyRelation struct {
 	TableName                          string
 	ConstraintColumnName               string
 	ReferencedObject                   string
+	ReferencedObjectWithRule           string
 	ReferencedColumnName               string
 	IsDisabled                         string
 	DeleteReferentialActionDescription string

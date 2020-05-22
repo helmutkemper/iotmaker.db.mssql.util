@@ -11,8 +11,10 @@ func (el GoToMSSqlCode) ListColumnTypes(tableName string) (error, map[string]Col
 	var ret = make(map[string]ColumnType)
 	var line []*sql.ColumnType
 	var nameWithRule string
-	var listPriparyKey = make(map[string]PrimaryKeyRelation)
+	var listPrimaryKey = make(map[string]PrimaryKeyRelation)
+	var listForeignKey = make(map[string]ForeignKeyRelation)
 	var isPrimaryKey bool
+	var isForeignKey bool
 	var tableNameWithRule string
 
 	err, tableNameWithRule = NameRules(tableName)
@@ -20,7 +22,9 @@ func (el GoToMSSqlCode) ListColumnTypes(tableName string) (error, map[string]Col
 		return err, nil
 	}
 
-	err, listPriparyKey = el.ListPrimaryKeyColumns(tableName)
+	err, listForeignKey = el.ListForeignKeyColumns(tableName)
+
+	err, listPrimaryKey = el.ListPrimaryKeyColumns(tableName)
 	if err != nil {
 		return err, nil
 	}
@@ -44,7 +48,8 @@ func (el GoToMSSqlCode) ListColumnTypes(tableName string) (error, map[string]Col
 			return err, nil
 		}
 
-		_, isPrimaryKey = listPriparyKey[name]
+		_, isPrimaryKey = listPrimaryKey[name]
+		_, isForeignKey = listForeignKey[name]
 
 		decimalSizePrecision, decimalSizeScale, decimalSizeOkToUse := value.DecimalSize()
 		length, lengthOkToUse := value.Length()
@@ -62,6 +67,7 @@ func (el GoToMSSqlCode) ListColumnTypes(tableName string) (error, map[string]Col
 			Nullable:             nullable,
 			NullableOkToUse:      nullableOkToUse,
 			IsPrimaryKey:         isPrimaryKey,
+			IsForeignKey:         isForeignKey,
 			ScanType:             value.ScanType(),
 		}
 

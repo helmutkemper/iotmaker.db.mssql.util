@@ -22,7 +22,7 @@ func (el GoToMSSqlCode) ListForeignKeyColumns(tableName string) (error, map[stri
   FROM sys.foreign_keys AS f
   INNER JOIN sys.foreign_key_columns AS fc
      ON f.object_id = fc.constraint_object_id
-  WHERE f.parent_object_id = OBJECT_ID('%v');`, tableName))
+  WHERE f.parent_object_id = OBJECT_ID('%v') ORDER BY foreign_key_name ASC;`, tableName))
 	if err != nil {
 		return err, nil
 	}
@@ -40,6 +40,11 @@ func (el GoToMSSqlCode) ListForeignKeyColumns(tableName string) (error, map[stri
 			&line.DeleteReferentialActionDescription,
 			&line.UpdateReferentialActionDescription,
 		)
+		if err != nil {
+			return err, nil
+		}
+
+		err, line.ReferencedObjectWithRule = NameRules(line.ReferencedObject)
 		if err != nil {
 			return err, nil
 		}
