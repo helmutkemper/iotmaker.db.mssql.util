@@ -2,14 +2,6 @@ package iotmaker_db_mssql_util
 
 import "reflect"
 
-/*
-Table_structName_Rows
-var Table_structName_Rows
-var arrayOfTable_structName_ = make([]Table_structName_, 0)
-var _structName_Column_fieldName_
-_structName_Column_fieldName_
-*/
-
 type ColumnType struct {
 	FieldName                   string
 	FieldNameWithRules          string
