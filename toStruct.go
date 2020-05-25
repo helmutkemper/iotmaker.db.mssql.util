@@ -104,38 +104,57 @@ func (el ToMakeStruct) MakeStructText(tagSql string) string {
 }
 
 func (el GoToMSSqlCode) MakeFile(tableName string) error {
-	toFile := ""
-	toFile += fmt.Sprintf("func main() {\n")
-	toFile += fmt.Sprintf("  var err error\n")
-	toFile += fmt.Sprintf("  var UserRows *sql.Rows\n")
-	toFile += fmt.Sprintf("\n")
+	/*err, tableNameWithRule := NameRules(tableName)
+	  if err != nil {
+	    return err
+	  }
 
-	data := el.prepare(tableName)
-	toFile += fmt.Sprintf("%v\n", el.queryCodePrimaryKey(2, tableName, data))
+	  err, foreignKeyColumnsList := el.ListForeignKeyColumns(tableName)
+	  if err != nil {
+	    panic(err)
+	  }
 
-	err, fk := el.ListForeignKeyColumns(tableName)
-	if err != nil {
-		panic(err)
-	}
+	  toFile := ""
+		toFile += fmt.Sprintf("func main() {\n")
+		toFile += fmt.Sprintf("  var err error\n")
+	  toFile += fmt.Sprintf("  var db *sql.DB\n")
+	  toFile += fmt.Sprintf("  var ctx context.Context\n")
+		toFile += fmt.Sprintf("  var %vRows *sql.Rows\n", tableNameWithRule)
 
-	for _, structConfig := range fk {
-		data = el.prepare(structConfig.ReferencedObject)
+		for _, fkData := range foreignKeyColumnsList {
+	    toFile += fmt.Sprintf("  var %vRows *sql.Rows\n", fkData.ReferencedObjectWithRule)
+	  }
 
-		var primaryKeyName, primaryKeyNameWithRule string
-		for _, v1 := range el.dbConfig[structConfig.ReferencedObject] {
-			if v1.IsPrimaryKey == true {
-				primaryKeyName = v1.Name
-				primaryKeyNameWithRule = v1.NameWithRule
-				break
-			}
-		}
+		toFile += fmt.Sprintf("\n")
 
-		toFile += fmt.Sprintf("%v\n",
-			el.queryCodeForeignKey(4, structConfig.ReferencedObject, structConfig.ReferencedObjectWithRule, data, tableName, primaryKeyName, primaryKeyNameWithRule),
+		data := el.prepare(tableName)
+		toFile += fmt.Sprintf(
+		  "%v\n",
+		  el.queryCodePrimaryKey(
+		    2,
+		    tableName,
+		    data,
+	    ),
+	  )
+
+		for _, structConfig := range foreignKeyColumnsList {
+			//data = el.prepare(structConfig.ReferencedObject)
+
+			/*var primaryKeyName, primaryKeyNameWithRule string
+			for _, v1 := range el.dbConfig[structConfig.ReferencedObject] {
+				if v1.IsPrimaryKey == true {
+					primaryKeyName = v1.Name
+					primaryKeyNameWithRule = v1.NameWithRule
+					break
+				}
+			}*/
+
+	/*toFile += fmt.Sprintf("%v\n",
+			el.queryCodeForeignKey(4, structConfig),
 		)
 	}
 
-	fmt.Printf("%v\n", toFile)
+	fmt.Printf("%v\n", toFile)*/
 	return nil
 }
 
@@ -149,112 +168,121 @@ type prepareData struct {
 	fieldNameWithRuleAllPrimary map[string]string
 }
 
-func (el *GoToMSSqlCode) prepare(tableName string) prepareData {
+func (el *GoToMSSqlCode) queryCodeForeignKey(spaces int, data ForeignKeyRelation) string {
 
-	ret := prepareData{
-		fieldTypeAll:                make(map[string]string),
-		fieldNameAll:                make(map[string]string),
-		fieldNameWithRuleAll:        make(map[string]string),
-		fieldNameAllForeign:         make(map[string]string),
-		fieldNameWithRuleAllForeign: make(map[string]string),
-		fieldNameAllPrimary:         make(map[string]string),
-		fieldNameWithRuleAllPrimary: make(map[string]string),
-	}
-
-	for _, structConfig := range el.dbConfig[tableName] {
-		ret.fieldNameAll[structConfig.Name] = structConfig.Name
-		ret.fieldTypeAll[structConfig.Name] = structConfig.GetScanTypeAsString()
-		ret.fieldNameWithRuleAll[structConfig.Name] = structConfig.NameWithRule
-
-		if structConfig.IsPrimaryKey == true {
-			ret.fieldNameAllPrimary[structConfig.Name] = structConfig.Name
-			ret.fieldNameWithRuleAllPrimary[structConfig.Name] = structConfig.NameWithRule
+	/*spacesString := ""
+		for i := 0; i != spaces; i += 1 {
+			spacesString += " "
 		}
 
-		if structConfig.IsForeignKey == true {
-			ret.fieldNameAllForeign[structConfig.Name] = structConfig.Name
-			ret.fieldNameWithRuleAllForeign[structConfig.Name] = structConfig.NameWithRule
+	  dataPrepared := el.prepare(data.ReferencedObject)
+
+		toFile := ""
+		toFile += fmt.Sprintf(
+		  "%v%vRows, err = db.QueryContext(ctx, fmt.Sprintf(\"SELECT %v FROM %v WHERE %v = %%v\", %v))\n",
+		  spacesString,
+		  data.ReferencedObjectWithRule,
+		  el.joinMap(dataPrepared.fieldNameAll, ", "),
+	    data.ReferencedObject,
+	    el.joinMap(dataPrepared.fieldNameAllPrimary, ""),
+	    data.TableNameWithRule+"Column"+data.ConstraintColumnNameWithRule,
+	  )
+		toFile += fmt.Sprintf("%vif err != nil {\n", spacesString)
+		toFile += fmt.Sprintf("%v  panic(err)\n", spacesString)
+		toFile += fmt.Sprintf("%v}\n", spacesString)
+
+		for _, line := range dataPrepared.fieldNameWithRuleAllForeign {
+			toFile += fmt.Sprintf("%vvar arrayOfStruct%v = make([]%v, 0)\n", spacesString, line, line)
 		}
-	}
+		toFile += fmt.Sprintf("\n")
 
-	return ret
-}
+		toFile += fmt.Sprintf("%vfor %vRows.Next() {\n", spacesString, data.ReferencedObjectWithRule)
+		for k, line := range dataPrepared.fieldNameWithRuleAll {
+			toFile += fmt.Sprintf("%v  var %vColumn%v %v\n", spacesString, data.ReferencedObjectWithRule, line, dataPrepared.fieldTypeAll[k])
+		}
 
-func (el *GoToMSSqlCode) queryCodeForeignKey(spaces int, tableName, tableNameWithRule string, data prepareData, referenceTableName, primaryKeyName, primaryKeyNameWithRule string) string {
+		toFile += fmt.Sprintf("%v  %vRows.Scan(", spacesString, data.ReferencedObjectWithRule)
+		for _, line := range dataPrepared.fieldNameWithRuleAll {
+			toFile += fmt.Sprintf("&%vColumn%v, ", data.ReferencedObjectWithRule, line)
+		}
+		toFile = strings.TrimRight(toFile, ", ")
+		toFile += fmt.Sprintf(")\n\n")
 
-	spacesString := ""
-	for i := 0; i != spaces; i += 1 {
-		spacesString += " "
-	}
+		toStruct := ""
+		for _, v := range el.dbConfig[data.ReferencedObject] {
+	    toStruct += fmt.Sprintf("%v: %v, ", v.NameWithRule, v.VarName)
+	  }
+	  toStruct = strings.TrimRight(toStruct, ", ")
+	  toStruct = fmt.Sprintf("{%v}", toStruct)
 
-	toFile := ""
-	toFile += fmt.Sprintf("%v%vRows, err = db.QueryContext(ctx, fmt.Sprintf(\"--SELECT %v FROM %v WHERE %v = %%v\", %v))\n", spacesString, tableNameWithRule, el.joinMap(data.fieldNameAll, ", "), tableName, primaryKeyName, tableNameWithRule+"Column"+primaryKeyNameWithRule)
-	toFile += fmt.Sprintf("%vid err != nil {\n", spacesString)
-	toFile += fmt.Sprintf("%v  panic(err)\n", spacesString)
-	toFile += fmt.Sprintf("%v}\n", spacesString)
+	  toFile += fmt.Sprintf("%v  arrayOfStruct%v = append(arrayOfStruct%v, Table%v%v)\n", spacesString, data.ReferencedObjectWithRule, data.ReferencedObjectWithRule, data.ReferencedObjectWithRule, toStruct)
 
-	for _, line := range data.fieldNameWithRuleAllForeign {
-		toFile += fmt.Sprintf("%vvar arrayOfStruct%v = make([]%v, 0)\n", spacesString, line, line)
-	}
-	toFile += fmt.Sprintf("\n")
+		toFile += fmt.Sprintf("%v}\n", spacesString)
 
-	toFile += fmt.Sprintf("%vfor %vRows.Next() {\n", spacesString, tableName)
-	for k, line := range data.fieldNameWithRuleAll {
-		toFile += fmt.Sprintf("%v  var %vColimn%v %v\n", spacesString, tableName, line, data.fieldTypeAll[k])
-	}
-
-	toFile += fmt.Sprintf("%v  %vRows.Scan(", spacesString, tableName)
-	for _, line := range data.fieldNameWithRuleAll {
-		toFile += fmt.Sprintf("&%vColimn%v, ", tableName, line)
-	}
-	toFile = strings.TrimRight(toFile, ", ")
-	toFile += fmt.Sprintf(")\n")
-
-	toFile += fmt.Sprintf("")
-
-	return toFile
+		return toFile*/
+	return ""
 }
 
 func (el *GoToMSSqlCode) queryCodePrimaryKey(spaces int, tableName string, data prepareData) string {
+	/*  var err error
+	  var tableNameWithRule string
 
-	spacesString := ""
-	for i := 0; i != spaces; i += 1 {
-		spacesString += " "
-	}
+	  err, tableNameWithRule = NameRules(tableName)
+	  if err != nil {
+	    panic(err)
+	  }
 
-	toFile := ""
-	toFile += fmt.Sprintf("%v%vRows, err = db.QueryContext(ctx, \"-SELECT %v FROM %v\")\n", spacesString, tableName, el.joinMap(data.fieldNameAll, ", "), tableName)
-	toFile += fmt.Sprintf("%vid err != nil {\n", spacesString)
-	toFile += fmt.Sprintf("%v  panic(err)\n", spacesString)
-	toFile += fmt.Sprintf("%v}\n", spacesString)
+	  err, foreignKeyColumnsList := el.ListForeignKeyColumns(tableName)
+	  if err != nil {
+	    panic(err)
+	  }
 
-	for _, line := range data.fieldNameWithRuleAllForeign {
-		toFile += fmt.Sprintf("%vvar arrayOfStruct%v = make([]%v, 0)\n", spacesString, line, line)
-	}
-	toFile += fmt.Sprintf("\n")
+		spacesString := ""
+		for i := 0; i != spaces; i += 1 {
+			spacesString += " "
+		}
 
-	toFile += fmt.Sprintf("%vfor %vRows.Next() {\n", spacesString, tableName)
-	for k, line := range data.fieldNameWithRuleAll {
-		toFile += fmt.Sprintf("%v  var %vColimn%v %v\n", spacesString, tableName, line, data.fieldTypeAll[k])
-	}
+		toFile := ""
+		toFile += fmt.Sprintf(
+		  "%v%vRows, err = db.QueryContext(ctx, \"-SELECT %v FROM %v\")\n",
+		  spacesString,
+		  tableNameWithRule,
+		  el.joinMap(data.fieldNameAll, ", "),
+		  tableName,
+	  )
+		toFile += fmt.Sprintf("%vif err != nil {\n", spacesString)
+		toFile += fmt.Sprintf("%v  panic(err)\n", spacesString)
+		toFile += fmt.Sprintf("%v}\n", spacesString)
 
-	toFile += fmt.Sprintf("%v  %vRows.Scan(", spacesString, tableName)
+	  for _, fkData := range foreignKeyColumnsList {
+	    toFile += fmt.Sprintf("%vvar arrayOfStruct%v = make([]Table%v, 0)\n", spacesString, fkData.ReferencedObjectWithRule, fkData.ReferencedObjectWithRule)
+	  }
 
-	keys := make([]string, 0, len(data.fieldNameWithRuleAll))
-	for k := range data.fieldNameWithRuleAll {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+		toFile += fmt.Sprintf("\n")
 
-	for _, k := range keys {
-		toFile += fmt.Sprintf("&%vColimn%v, ", tableName, data.fieldNameWithRuleAll[k])
-	}
-	toFile = strings.TrimRight(toFile, ", ")
-	toFile += fmt.Sprintf(")\n")
+		toFile += fmt.Sprintf("%vfor %vRows.Next() {\n", spacesString, tableNameWithRule)
+		for k, line := range data.fieldNameWithRuleAll {
+			toFile += fmt.Sprintf("%v  var %vColumn%v %v\n", spacesString, tableNameWithRule, line, data.fieldTypeAll[k])
+		}
 
-	toFile += fmt.Sprintf("")
+		toFile += fmt.Sprintf("%v  %vRows.Scan(", spacesString, tableNameWithRule)
 
-	return toFile
+		keys := make([]string, 0, len(data.fieldNameWithRuleAll))
+		for k := range data.fieldNameWithRuleAll {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+
+		for _, k := range keys {
+			toFile += fmt.Sprintf("&%vColumn%v, ", tableNameWithRule, data.fieldNameWithRuleAll[k])
+		}
+		toFile = strings.TrimRight(toFile, ", ")
+		toFile += fmt.Sprintf(")\n")
+
+		return toFile
+
+	*/
+	return ""
 }
 
 func (el *GoToMSSqlCode) joinMap(list map[string]string, glue string) string {
@@ -272,7 +300,7 @@ func (el *GoToMSSqlCode) joinMap(list map[string]string, glue string) string {
 }
 
 func (el *GoToMSSqlCode) Analyze() (error, ToMakeStruct) {
-	var err error
+	/*var err error
 	var tableNameList []string
 	var primaryTableList = make(map[string]map[string]PrimaryKeyRelation)
 	var foreignTableList = make(map[string]map[string]ForeignKeyRelation)
@@ -291,7 +319,7 @@ func (el *GoToMSSqlCode) Analyze() (error, ToMakeStruct) {
 		var listForeignKey map[string]ForeignKeyRelation
 		var listPrimaryKey map[string]PrimaryKeyRelation
 
-		err, listOfColType = el.ListColumnTypes(tableName)
+		//err, listOfColType = el.GetFieldsTypeFromTable(tableName)
 		if err != nil {
 			return err, nil
 		}
@@ -403,20 +431,23 @@ func (el *GoToMSSqlCode) Analyze() (error, ToMakeStruct) {
 	}
 
 	return nil, ret
+
+	*/
+	return nil, nil
 }
 
 func (el GoToMSSqlCode) getColumnName(columnName, tableName string) string {
-	tableNameWithRules := el.dbConfig[tableName][columnName].TableNameWithRule
-	columnNameWithRules := el.dbConfig[tableName][columnName].NameWithRule
+	//tableNameWithRules := el.dbConfig[tableName][columnName].TableNameWithRule
+	//columnNameWithRules := el.dbConfig[tableName][columnName].NameWithRule
 
-	return "table" + tableNameWithRules + "Column" + columnNameWithRules
+	return "table" //+ /*tableNameWithRules +*/ "Column" + columnNameWithRules
 }
 
 func (el GoToMSSqlCode) getColumnNameWithSqlAsStatement(columnName, tableName string) string {
-	tableNameWithRules := el.dbConfig[tableName][columnName].TableNameWithRule
-	columnNameWithRules := el.dbConfig[tableName][columnName].NameWithRule
+	//tableNameWithRules := el.dbConfig[tableName][columnName].TableNameWithRule
+	//columnNameWithRules := el.dbConfig[tableName][columnName].NameWithRule
 
-	return columnName + " AS table" + tableNameWithRules + "Column" + columnNameWithRules
+	return "" //columnName + " AS table" /*+ tableNameWithRules*/ + "Column" + columnNameWithRules
 }
 
 func (el GoToMSSqlCode) getPrimaryKeyName(tableName string) (error, string) {

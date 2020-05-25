@@ -44,11 +44,6 @@ func (el GoToMSSqlCode) ListForeignKeyColumns(tableName string) (error, map[stri
 			return err, nil
 		}
 
-		err, line.ReferencedObjectWithRule = NameRules(line.ReferencedObject)
-		if err != nil {
-			return err, nil
-		}
-
 		returnList[line.ConstraintColumnName] = line
 	}
 
