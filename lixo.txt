@@ -19,6 +19,8 @@ import (
   "io/ioutil"
   "os"
   "reflect"
+  "regexp"
+  "strings"
   "time"
 )
 
@@ -358,35 +360,57 @@ func mountPageModal() {
 
 
 
-type TableTest struct {
-  Id  int64 `sql:"id" primaryKey:"true"`
-  Nome  string `sql:"nome"`
+type TableHomePhone struct {
+  Number  string `sql:"number"`
+  Id  int64 `sql:"id" primaryKey:"true" primaKeyFieldName:"HomePhone"primaryKeyQuery:"SELECT id, number FROM home_phone" primaryKeyScan:"&tableHomePhoneColumnId, &tableHomePhoneColumnNumber" primaryKeyVars:"var tableHomePhoneColumnNumber string\nvar tableHomePhoneColumnId int64\n" toForeignKeyList:"" `
 }
-type TableRelacao struct {
-  Test  []TableTest `sql:"TableTest" primaryKeyQuery:"SELECT id_test, name, id FROM relacao" foreignKeyQuery:"SELECT id, nome FROM test WHERE id = %v" foreignKeyScan:"&columnId, &columnNome" foreignKeyVars:"  var columnId int64\n  var columnNome string\n" primaryKeyScan:"&columnId, &columnIdTest, &columnName" primaryKeyVars:"  var columnName string\n  var columnId int64\n  var columnIdTest int64\n" primaKeyFieldName:"columnId"`
+type TableWorkPhone struct {
+  Id  int64 `sql:"id" primaryKey:"true" primaKeyFieldName:"WorkPhone"primaryKeyQuery:"SELECT number, id FROM work_phone" primaryKeyScan:"&tableWorkPhoneColumnId, &tableWorkPhoneColumnNumber" primaryKeyVars:"var tableWorkPhoneColumnId int64\nvar tableWorkPhoneColumnNumber string\n" toForeignKeyList:"" `
+  Number  string `sql:"number"`
+}
+type TableUser struct {
+  MobilePhone  []TableMobilePhone `sql:"TableMobilePhone" primaryKeyQuery:"" foreignKeyQuery:"SELECT id, number FROM mobile_phone WHERE id = %v" foreignKeyScan:"&tableMobilePhoneColumnId, &tableMobilePhoneColumnNumber" foreignKeyVars:"" primaryKeyScan:"" primaryKeyVars:"var tableUserColumnIdWorkPhone int64\nvar tableUserColumnName string\nvar tableUserColumnId int64\nvar tableUserColumnIdMobilePhone int64\nvar tableUserColumnIdHomePhone int64\n" primaKeyFieldName:"tableUserColumnId"`
+  HomePhone  []TableHomePhone `sql:"TableHomePhone" primaryKeyQuery:"" foreignKeyQuery:"SELECT id, number FROM home_phone WHERE id = %v" foreignKeyScan:"&tableHomePhoneColumnId, &tableHomePhoneColumnNumber" foreignKeyVars:"" primaryKeyScan:"" primaryKeyVars:"var tableUserColumnIdWorkPhone int64\nvar tableUserColumnName string\nvar tableUserColumnId int64\nvar tableUserColumnIdMobilePhone int64\nvar tableUserColumnIdHomePhone int64\n" primaKeyFieldName:"tableUserColumnId"`
+  WorkPhone  []TableWorkPhone `sql:"TableWorkPhone" primaryKeyQuery:"" foreignKeyQuery:"SELECT id, number FROM work_phone WHERE id = %v" foreignKeyScan:"&tableWorkPhoneColumnNumber, &tableWorkPhoneColumnId" foreignKeyVars:"" primaryKeyScan:"" primaryKeyVars:"var tableUserColumnName string\nvar tableUserColumnId int64\nvar tableUserColumnIdMobilePhone int64\nvar tableUserColumnIdHomePhone int64\nvar tableUserColumnIdWorkPhone int64\n" primaKeyFieldName:"tableUserColumnId"`
   Name  string `sql:"name"`
-  Id  int64 `sql:"id" primaryKey:"true"`
+  Id  int64 `sql:"id" primaryKey:"true" primaKeyFieldName:"User"primaryKeyQuery:"SELECT id_home_phone, id_work_phone, name, id, id_mobile_phone FROM user" primaryKeyScan:"&tableUserColumnId, &tableUserColumnIdMobilePhone, &tableUserColumnIdHomePhone, &tableUserColumnIdWorkPhone, &tableUserColumnName" primaryKeyVars:"var tableUserColumnId int64\nvar tableUserColumnIdMobilePhone int64\nvar tableUserColumnIdHomePhone int64\nvar tableUserColumnIdWorkPhone int64\nvar tableUserColumnName string\n" toForeignKeyList:"HomePhone,MobilePhone,WorkPhone" `
+}
+type TableMobilePhone struct {
+  Id  int64 `sql:"id" primaryKey:"true" primaKeyFieldName:"MobilePhone"primaryKeyQuery:"SELECT id, number FROM mobile_phone" primaryKeyScan:"&tableMobilePhoneColumnId, &tableMobilePhoneColumnNumber" primaryKeyVars:"var tableMobilePhoneColumnId int64\nvar tableMobilePhoneColumnNumber string\n" toForeignKeyList:"" `
+  Number  string `sql:"number"`
 }
 
 
-func test(ctx context.Context, db *sql.DB, id int64) error {
-  //var err error
 
-  el := &TableRelacao{}
+func test(ctx context.Context, db *sql.DB) error {
+  var tagPrimaryKey bool
+
+  el := &TableUser{}
   element := reflect.ValueOf(el).Elem()
 
   for i := 0; i < element.NumField(); i += 1 {
     typeField := element.Type().Field(i)
     tag := typeField.Tag
 
+    if tag.Get("primaryKey") == "true" {
+      tagPrimaryKey = true
+    } else {
+      tagPrimaryKey = false
+    }
+
     tagField := tag.Get("sql")
     tagPrimaKeyFieldName := tag.Get("primaKeyFieldName")
+
     tagPrimaryKeyQuery := tag.Get("primaryKeyQuery")
     tagForeignKeyQuery := tag.Get("foreignKeyQuery")
+
     tagPrimaryKeyScan  := tag.Get("primaryKeyScan")
     tagForeignKeyScan  := tag.Get("foreignKeyScan")
+
     tagPrimaryKeyVars  := tag.Get("primaryKeyVars")
     tagForeignKeyVars  := tag.Get("foreignKeyVars")
+
+    tagToForeignKeyList := tag.Get("toForeignKeyList")
 
     tagFieldBool := tagField == ""
     tagPrimaKeyFieldNameBool := tagPrimaKeyFieldName == ""
@@ -403,77 +427,81 @@ func test(ctx context.Context, db *sql.DB, id int64) error {
     orForeignKeyLogic := tagPrimaKeyFieldNameBool && tagFieldBool || tagForeignKeyQueryBool || tagForeignKeyScanBool || tagForeignKeyVarsBool == true
 
     if andPrimaryKeyLogic == false && andForeignKeyLogic == false && orPrimaryKeyLogic == true && orForeignKeyLogic == true {
-      return errors.New("tags 'sql', 'primaKeyFieldName', 'primaryKeyQuery', 'foreignKeyQuery', 'primaryKeyScan', 'foreignKeyScan', 'primaryKeyVars' and 'foreignKeyVars' are necessary for this function")
+      //return errors.New("tags 'sql', 'primaKeyFieldName', 'primaryKeyQuery', 'foreignKeyQuery', 'primaryKeyScan', 'foreignKeyScan', 'primaryKeyVars' and 'foreignKeyVars' are necessary for this function")
     }
 
-
+    if tagPrimaryKey == true {
+      mountPrimaryKey(tagPrimaryKeyQuery, tagPrimaryKeyScan, tagPrimaryKeyVars, tagPrimaKeyFieldName, tagToForeignKeyList)
+    }
   }
 
   return nil
 }
 
-/*
- sql:"TableTest"
- primaryKeyQuery:"SELECT id_test, name, id FROM relacao"
- foreignKeyQuery:"SELECT id, nome FROM test WHERE id = %v"
- foreignKeyScan:"&columnId, &columnNome"
- foreignKeyVars:"  var columnId int64\n  var columnNome string\n"
- primaryKeyScan:"&columnId, &columnIdTest, &columnName"
- primaryKeyVars:"  var columnName string\n  var columnId int64\n  var columnIdTest int64\n"
- primaKeyFieldName:"columnId"
-*/
+func mountPrimaryKey(primaryKeyQuery, primaryKeyScan, primaryKeyVars, primaKeyFieldName, foreignKeyList string) string {
 
-func correct(ctx context.Context, db *sql.DB, id int64, toProcessFunc func(interface{})) error {
+  primaryKeyVars = strings.ReplaceAll(primaryKeyVars, "\n", "\n    ")
+  primaryKeyVars = strings.TrimRight(primaryKeyVars, "    ")
 
+  var r *regexp.Regexp
   var err error
-  var primaryKeyWows, foreignKeyWows  *sql.Rows
-  var tableRelacao TableRelacao
+  var structVarsMount string
+  for k, toStructVar := range strings.Split(foreignKeyList, ",") {
+    if k != 0 {
+      structVarsMount += "  "
+    }
+    structVarsMount += "var " + toStructVar + " = make([]" + toStructVar + ", 0)\n"
+  }
 
-  primaryKeyWows, err = db.QueryContext(ctx, fmt.Sprintf("SELECT id, id_test, name FROM relacao"))
+	var toCode = `
+  var err error
+  var #{primaKeyFieldName}Rows *sql.Rows
+
+  #{primaKeyFieldName}Rows, err = db.QueryContext(ctx, "#{primaryKeyQuery}")
   if err != nil {
     return err
   }
 
-  for primaryKeyWows.Next() {
-    var tableRelacaoColumnName string
-    var tableRelacaoColumnId int64
-    var tableRelacaoColumnIdTest int64
-
-    err = primaryKeyWows.Scan(&tableRelacaoColumnId, &tableRelacaoColumnIdTest, &tableRelacaoColumnName)
-    if err != nil {
-      return err
-    }
-
-    foreignKeyWows, err = db.QueryContext(ctx, fmt.Sprintf("SELECT id, nome FROM test WHERE id = %v", tableRelacaoColumnId))
-    if err != nil {
-      return err
-    }
-
-    var dataTableTest = make([]TableTest, 0)
-    for foreignKeyWows.Next() {
-      var tableTestColumnId int64
-      var tableTestColumnNome string
-
-      err = foreignKeyWows.Scan(&tableTestColumnId, &tableTestColumnNome)
-      if err != nil {
-        return err
-      }
-
-      dataTableTest = append(dataTableTest, TableTest{
-        Id:   tableTestColumnId,
-        Nome: tableTestColumnNome,
-      })
-    }
-
-    tableRelacao = TableRelacao{
-      Test: dataTableTest,
-      Name: tableRelacaoColumnName,
-      Id:   tableRelacaoColumnId,
-    }
-    functionCallBack(tableRelacao)
+  #{structVarsMount}
+  for #{primaKeyFieldName}Rows.Next() {
+    #{primaryKeyVars}
+    err = #{primaKeyFieldName}Rows.San(#{primaryKeyScan})
   }
+	`
 
-  return nil
+	r, err = regexp.Compile(`(?P<structVarsMount>#\{structVarsMount})`)
+	if err != nil {
+	  panic(err)
+  }
+  toCode = r.ReplaceAllLiteralString(toCode, structVarsMount)
+
+  r, err = regexp.Compile(`(?P<primaKeyFieldName>#\{primaKeyFieldName})`)
+	if err != nil {
+	  panic(err)
+  }
+  toCode = r.ReplaceAllLiteralString(toCode, primaKeyFieldName)
+
+  r, err = regexp.Compile(`(?P<primaryKeyQuery>#\{primaryKeyQuery})`)
+	if err != nil {
+	  panic(err)
+  }
+  toCode = r.ReplaceAllLiteralString(toCode, primaryKeyQuery)
+
+  r, err = regexp.Compile(`(?P<primaryKeyVars>#\{primaryKeyVars})`)
+	if err != nil {
+	  panic(err)
+  }
+  toCode = r.ReplaceAllLiteralString(toCode, primaryKeyVars)
+
+  r, err = regexp.Compile(`(?P<primaryKeyScan>#\{primaryKeyScan})`)
+	if err != nil {
+	  panic(err)
+  }
+  toCode = r.ReplaceAllLiteralString(toCode, primaryKeyScan)
+
+  fmt.Printf("%v\n\n\n\n\n", toCode)
+  //os.Exit(0)
+  return toCode
 }
 
 func functionCallBack(data interface{}) {
@@ -482,11 +510,11 @@ func functionCallBack(data interface{}) {
 
 //Server=localhost;Database=master;Trusted_Connection=True;
 func main() {
-  //test()
+
   var err error
   var db *sql.DB
-  var list2 map[string]mssqlUtil.ColumnType
-  var toPrint mssqlUtil.ToMakeStruct
+  //var list2 map[string]mssqlUtil.ColumnType
+  //var toPrint mssqlUtil.ToMakeStruct
 
 
   ctx = mssqlUtil.GetContextBackground()
@@ -494,7 +522,7 @@ func main() {
   connString := fmt.Sprintf("server=%s;port=%d;database=%s;user id=%s;password=%s",
     "localhost",
     1434,
-    "kemper2",
+    "toExport",
     "CS\\helmut.kemper",
     "temp@123")
   db, err = sql.Open("sqlserver", connString)
@@ -509,16 +537,25 @@ func main() {
 
   defer db.Close()
 
+  //test(ctx, db)
+
+  var tbl mssqlUtil.Database
+  tbl.New(db, ctx)
+  fmt.Printf("%v", tbl.ToCode("user", "main"))
+  os.Exit(0)
+
   var code = mssqlUtil.GoToMSSqlCode{
     Db:  db,
     Ctx: ctx,
   }
-  err, toPrint = code.ToStruct()
+  err, _ = code.Analyze()
   if err != nil {
     panic(err)
   }
 
-  fmt.Printf("%v\n", toPrint.MakeStructText("sql"))
+  _ = code.MakeFile("user")
+
+  //fmt.Printf("%v\n", toPrint.MakeStructText("sql"))
 
 os.Exit(0)
 
@@ -533,11 +570,11 @@ os.Exit(0)
 
 
 
-  err, list2 = code.ListColumnTypes("test")
+  /*err, list2 = code.ListColumnTypes("test")
   if err != nil {
     panic(err)
   }
-  fmt.Printf("%+v\n", list2)
+  fmt.Printf("%+v\n", list2)*/
 
 
   os.Exit(0)
